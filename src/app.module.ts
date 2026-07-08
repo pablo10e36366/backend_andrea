@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AccessModule } from './access/access.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { DownloadsModule } from './downloads/downloads.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PaypalModule } from './paypal/paypal.module';
@@ -17,6 +18,7 @@ import { UsersModule } from './users/users.module';
     OrdersModule,
     PaymentsModule,
     AccessModule,
+    DownloadsModule,
     PaypalModule,
   ],
   controllers: [AppController],
