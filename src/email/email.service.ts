@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { Resend } from 'resend';
 import { DownloadsService } from '../downloads/downloads.service';
 
@@ -41,10 +38,12 @@ export class EmailService {
     const attachment = await this.downloadsService.getEmailAttachment(
       input.productSlug,
     );
-    const resend = new Resend(this.apiKey);
-    const customerName = this.escapeHtml(
-      input.customerName?.trim() || 'Hola',
+    const privateAccess = await this.downloadsService.createPrivateAccessLink(
+      input.email,
+      input.productSlug,
     );
+    const resend = new Resend(this.apiKey);
+    const customerName = this.escapeHtml(input.customerName?.trim() || 'Hola');
     const productTitle = this.escapeHtml(input.productTitle);
 
     const { data, error } = await resend.emails.send(
@@ -57,6 +56,11 @@ export class EmailService {
             <h1 style="color:#2f5d50;font-size:26px">Compra confirmada</h1>
             <p>${customerName}, gracias por tu compra.</p>
             <p>Adjuntamos tu workbook <strong>${productTitle}</strong> en formato PDF.</p>
+            <p>También puedes abrirlo desde este enlace privado, disponible durante 7 días:</p>
+            <p style="margin:24px 0">
+              <a href="${privateAccess.accessUrl}" style="display:inline-block;background:#2f5d50;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:999px;font-weight:700">Abrir workbook de forma segura</a>
+            </p>
+            <p style="color:#6b7280;font-size:13px">Este enlace es personal. No lo compartas con otras personas.</p>
             <p>Guarda este correo para que puedas consultar el material cuando lo necesites.</p>
             <p style="color:#6b7280;font-size:13px">Si no encuentras este mensaje en tu bandeja principal, revisa las carpetas de spam o correo no deseado.</p>
           </div>

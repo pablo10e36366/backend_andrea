@@ -57,34 +57,34 @@ export class PaypalService {
     private readonly emailService: EmailService,
   ) {}
 
-  private async confirmPaymentAndDeliver(
-    orderId: string,
-    providerRef: string,
-  ) {
+  private async deliverWorkbook(orderId: string) {
     const order = await this.paymentsService.findOrderWithPayment(orderId);
+
+    if (order.emailSentAt) {
+      return;
+    }
+
+    await this.emailService.sendWorkbookPurchase({
+      orderId: order.id,
+      email: order.user.email,
+      customerName: order.user.name,
+      productSlug: order.product.slug,
+      productTitle: order.product.title,
+    });
+    await this.paymentsService.markDeliveryEmailSent(order.id);
+  }
+
+  private async confirmPaymentAndDeliver(orderId: string, providerRef: string) {
     const internalResult = await this.paymentsService.confirm(orderId, {
       providerRef,
     });
 
-    if (!order.emailSentAt) {
-      await this.emailService.sendWorkbookPurchase({
-        orderId: order.id,
-        email: order.user.email,
-        customerName: order.user.name,
-        productSlug: order.product.slug,
-        productTitle: order.product.title,
-      });
-      await this.paymentsService.markDeliveryEmailSent(order.id);
-    }
+    await this.deliverWorkbook(orderId);
 
     return internalResult;
   }
 
-  private renderHtmlPage(
-    title: string,
-    message: string,
-    details?: string,
-  ) {
+  private renderHtmlPage(title: string, message: string, details?: string) {
     return `<!doctype html>
 <html lang="es">
   <head>
@@ -187,15 +187,12 @@ export class PaypalService {
 
       const detailText =
         errorBody.details
-          ?.map((detail) => [detail.issue, detail.description].filter(Boolean).join(': '))
+          ?.map((detail) =>
+            [detail.issue, detail.description].filter(Boolean).join(': '),
+          )
           .join(' | ') ?? '';
 
-      return [
-        fallbackMessage,
-        errorBody.name,
-        errorBody.message,
-        detailText,
-      ]
+      return [fallbackMessage, errorBody.name, errorBody.message, detailText]
         .filter(Boolean)
         .join(' | ');
     } catch {
@@ -231,9 +228,8 @@ export class PaypalService {
   }
 
   async createOrder(orderId: string) {
-    const internalOrder = await this.paymentsService.findOrderWithPayment(
-      orderId,
-    );
+    const internalOrder =
+      await this.paymentsService.findOrderWithPayment(orderId);
     const accessToken = await this.getAccessToken();
 
     const response = await fetch(`${this.baseUrl}/v2/checkout/orders`, {
@@ -280,8 +276,7 @@ export class PaypalService {
       );
     }
 
-    const paypalOrder =
-      (await response.json()) as PaypalCreateOrderResponse;
+    const paypalOrder = (await response.json()) as PaypalCreateOrderResponse;
 
     const approvalLink =
       paypalOrder.links?.find((link) => link.rel === 'approve')?.href ??
@@ -304,7 +299,24 @@ export class PaypalService {
   }
 
   async captureOrder(orderId: string, paypalOrderId: string) {
-    await this.paymentsService.findOrderWithPayment(orderId);
+    const internalOrder =
+      await this.paymentsService.findOrderWithPayment(orderId);
+
+    if (
+      internalOrder.status === 'paid' &&
+      internalOrder.payment?.status === 'paid'
+    ) {
+      await this.deliverWorkbook(orderId);
+
+      return {
+        paypal: {
+          id: paypalOrderId,
+          status: 'COMPLETED',
+        },
+        internal: await this.paymentsService.getConfirmedResult(orderId),
+      };
+    }
+
     const accessToken = await this.getAccessToken();
 
     const response = await fetch(
@@ -327,8 +339,7 @@ export class PaypalService {
       );
     }
 
-    const captureResult =
-      (await response.json()) as PaypalCaptureOrderResponse;
+    const captureResult = (await response.json()) as PaypalCaptureOrderResponse;
 
     const captureId =
       captureResult.purchase_units?.[0]?.payments?.captures?.[0]?.id ??
@@ -383,7 +394,7 @@ export class PaypalService {
           statusCode: 200,
           html: this.renderHtmlPage(
             'Pago confirmado',
-            'Tu pago fue aprobado correctamente y el acceso ya fue desbloqueado.',
+            'Tu pago fue aprobado. Enviamos el PDF y tu enlace privado de acceso al correo registrado.',
             `Orden interna: ${internalOrderId}`,
           ),
         };
@@ -395,13 +406,15 @@ export class PaypalService {
         statusCode: 200,
         html: this.renderHtmlPage(
           'Pago confirmado',
-          'Tu pago fue aprobado correctamente y el acceso ya fue desbloqueado.',
+          'Tu pago fue aprobado. Enviamos el PDF y tu enlace privado de acceso al correo registrado.',
           `Orden interna: ${result.internal.order.id}`,
         ),
       };
     } catch (error) {
       const details =
-        error instanceof Error ? error.message : 'No se pudo completar el pago.';
+        error instanceof Error
+          ? error.message
+          : 'No se pudo completar el pago.';
 
       return {
         statusCode: 500,

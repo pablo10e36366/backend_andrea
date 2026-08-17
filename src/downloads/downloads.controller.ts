@@ -1,34 +1,24 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Post,
-  Query,
-  Res,
-} from '@nestjs/common';
+import { Body, Controller, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { RequestDownloadDto } from './dto/request-download.dto';
+import { AccessTokenDto } from './dto/access-token.dto';
 import { DownloadsService } from './downloads.service';
 
 @Controller('downloads')
 export class DownloadsController {
   constructor(private readonly downloadsService: DownloadsService) {}
 
-  @Post('request')
-  requestDownload(@Body() requestDownloadDto: RequestDownloadDto) {
-    return this.downloadsService.createDownloadLinks(
-      requestDownloadDto.email,
-      requestDownloadDto.slug,
-    );
+  @Post('verify')
+  verifyAccess(@Body() accessTokenDto: AccessTokenDto) {
+    return this.downloadsService.verifyAccessToken(accessTokenDto.token);
   }
 
-  @Get('file')
+  @Post('file')
   async getFile(
-    @Query('token') token: string,
+    @Body() accessTokenDto: AccessTokenDto,
     @Query('download') download: string,
     @Res() response: Response,
   ) {
-    const file = await this.downloadsService.resolveFile(token);
+    const file = await this.downloadsService.resolveFile(accessTokenDto.token);
 
     response.setHeader('Content-Type', file.contentType);
     response.setHeader(

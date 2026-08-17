@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
@@ -10,6 +11,7 @@ import { AccessService } from '../access/access.service';
 import { ProductsService } from '../products/products.service';
 
 type DownloadTokenPayload = {
+  purpose: 'workbook-access';
   email: string;
   slug: string;
   exp: number;
@@ -18,11 +20,9 @@ type DownloadTokenPayload = {
 @Injectable()
 export class DownloadsService {
   private readonly privateRoot = path.resolve(process.cwd(), 'protected-files');
-  private readonly downloadSecret =
-    process.env.DOWNLOAD_TOKEN_SECRET ?? 'replace-this-secret';
-  private readonly tokenTtlMs = 1000 * 60 * 10;
-  private readonly backendUrl =
-    process.env.BACKEND_URL ?? 'http://localhost:3000';
+  private readonly tokenTtlMs = 1000 * 60 * 60 * 24 * 7;
+  private readonly frontendUrl =
+    process.env.FRONTEND_URL ?? 'http://localhost:5173';
 
   constructor(
     private readonly accessService: AccessService,
@@ -42,11 +42,12 @@ export class DownloadsService {
   }
 
   private signPayload(payload: DownloadTokenPayload) {
+    const downloadSecret = this.getDownloadSecret();
     const data = Buffer.from(JSON.stringify(payload), 'utf8').toString(
       'base64url',
     );
     const signature = crypto
-      .createHmac('sha256', this.downloadSecret)
+      .createHmac('sha256', downloadSecret)
       .update(data)
       .digest('base64url');
 
@@ -54,6 +55,7 @@ export class DownloadsService {
   }
 
   private parseToken(token: string) {
+    const downloadSecret = this.getDownloadSecret();
     const [data, signature] = token.split('.');
 
     if (!data || !signature) {
@@ -61,17 +63,38 @@ export class DownloadsService {
     }
 
     const expectedSignature = crypto
-      .createHmac('sha256', this.downloadSecret)
+      .createHmac('sha256', downloadSecret)
       .update(data)
       .digest('base64url');
 
-    if (signature !== expectedSignature) {
+    const actualBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+
+    if (
+      actualBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(actualBuffer, expectedBuffer)
+    ) {
       throw new ForbiddenException('Invalid download token');
     }
 
-    const payload = JSON.parse(
-      Buffer.from(data, 'base64url').toString('utf8'),
-    ) as DownloadTokenPayload;
+    let payload: DownloadTokenPayload;
+
+    try {
+      payload = JSON.parse(
+        Buffer.from(data, 'base64url').toString('utf8'),
+      ) as DownloadTokenPayload;
+    } catch {
+      throw new ForbiddenException('Invalid download token');
+    }
+
+    if (
+      payload.purpose !== 'workbook-access' ||
+      typeof payload.email !== 'string' ||
+      typeof payload.slug !== 'string' ||
+      typeof payload.exp !== 'number'
+    ) {
+      throw new ForbiddenException('Invalid download token');
+    }
 
     if (Date.now() > payload.exp) {
       throw new ForbiddenException('Download token expired');
@@ -80,7 +103,19 @@ export class DownloadsService {
     return payload;
   }
 
-  async createDownloadLinks(email: string, slug: string) {
+  private getDownloadSecret() {
+    const secret = process.env.DOWNLOAD_TOKEN_SECRET;
+
+    if (!secret || secret.length < 32) {
+      throw new InternalServerErrorException(
+        'DOWNLOAD_TOKEN_SECRET must contain at least 32 characters',
+      );
+    }
+
+    return secret;
+  }
+
+  async createPrivateAccessLink(email: string, slug: string) {
     await this.productsService.findOneBySlug(slug);
 
     const access = await this.accessService.check(email, slug);
@@ -95,16 +130,32 @@ export class DownloadsService {
       throw new NotFoundException('Protected file not configured');
     }
 
+    const expiresAt = Date.now() + this.tokenTtlMs;
     const token = this.signPayload({
+      purpose: 'workbook-access',
       email,
       slug,
-      exp: Date.now() + this.tokenTtlMs,
+      exp: expiresAt,
     });
 
     return {
-      viewUrl: `${this.backendUrl}/downloads/file?token=${encodeURIComponent(token)}`,
-      downloadUrl: `${this.backendUrl}/downloads/file?token=${encodeURIComponent(token)}&download=1`,
-      expiresInMinutes: 10,
+      accessUrl: `${this.frontendUrl}/#/workbooks/${slug}?access=${encodeURIComponent(token)}`,
+      expiresAt: new Date(expiresAt),
+    };
+  }
+
+  async verifyAccessToken(token: string) {
+    const payload = this.parseToken(token);
+    const access = await this.accessService.check(payload.email, payload.slug);
+
+    if (!access.hasAccess) {
+      throw new ForbiddenException('Access revoked for this file');
+    }
+
+    return {
+      hasAccess: true,
+      slug: payload.slug,
+      expiresAt: new Date(payload.exp).toISOString(),
     };
   }
 

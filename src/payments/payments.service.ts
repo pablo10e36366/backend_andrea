@@ -28,6 +28,24 @@ export class PaymentsService {
     return order;
   }
 
+  async getConfirmedResult(orderId: string) {
+    const order = await this.findOrderWithPayment(orderId);
+    const access = await this.prisma.userProductAccess.findUnique({
+      where: {
+        userId_productId: {
+          userId: order.userId,
+          productId: order.productId,
+        },
+      },
+    });
+
+    return {
+      payment: order.payment,
+      order,
+      access,
+    };
+  }
+
   async create(createPaymentDto: CreatePaymentDto) {
     const order = await this.findOrderWithPayment(createPaymentDto.orderId);
 
