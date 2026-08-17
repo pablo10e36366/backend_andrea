@@ -3,6 +3,7 @@ import { AccessModule } from './access/access.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DownloadsModule } from './downloads/downloads.module';
+import { EmailModule } from './email/email.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
 import { PaypalModule } from './paypal/paypal.module';
@@ -19,6 +20,7 @@ import { UsersModule } from './users/users.module';
     PaymentsModule,
     AccessModule,
     DownloadsModule,
+    EmailModule,
     PaypalModule,
   ],
   controllers: [AppController],

@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
 } from '@nestjs/common';
+import { EmailService } from '../email/email.service';
 import { PaymentsService } from '../payments/payments.service';
 
 type PaypalCreateOrderResponse = {
@@ -51,7 +52,33 @@ export class PaypalService {
   private readonly cancelUrl =
     process.env.PAYPAL_CANCEL_URL ?? 'http://localhost:3000/paypal/cancel';
 
-  constructor(private readonly paymentsService: PaymentsService) {}
+  constructor(
+    private readonly paymentsService: PaymentsService,
+    private readonly emailService: EmailService,
+  ) {}
+
+  private async confirmPaymentAndDeliver(
+    orderId: string,
+    providerRef: string,
+  ) {
+    const order = await this.paymentsService.findOrderWithPayment(orderId);
+    const internalResult = await this.paymentsService.confirm(orderId, {
+      providerRef,
+    });
+
+    if (!order.emailSentAt) {
+      await this.emailService.sendWorkbookPurchase({
+        orderId: order.id,
+        email: order.user.email,
+        customerName: order.user.name,
+        productSlug: order.product.slug,
+        productTitle: order.product.title,
+      });
+      await this.paymentsService.markDeliveryEmailSent(order.id);
+    }
+
+    return internalResult;
+  }
 
   private renderHtmlPage(
     title: string,
@@ -307,9 +334,10 @@ export class PaypalService {
       captureResult.purchase_units?.[0]?.payments?.captures?.[0]?.id ??
       paypalOrderId;
 
-    const internalResult = await this.paymentsService.confirm(orderId, {
-      providerRef: captureId,
-    });
+    const internalResult = await this.confirmPaymentAndDeliver(
+      orderId,
+      captureId,
+    );
 
     return {
       paypal: captureResult,
@@ -323,7 +351,7 @@ export class PaypalService {
         statusCode: 400,
         html: this.renderHtmlPage(
           'Pago no identificado',
-          'PayPal no devolvio el token de la orden.',
+          'PayPal no devolvió el token de la orden.',
           'Vuelve a intentar el proceso de compra.',
         ),
       };
@@ -349,9 +377,7 @@ export class PaypalService {
           paypalOrder.purchase_units?.[0]?.payments?.captures?.[0]?.id ??
           paypalOrderId;
 
-        await this.paymentsService.confirm(internalOrderId, {
-          providerRef: captureId,
-        });
+        await this.confirmPaymentAndDeliver(internalOrderId, captureId);
 
         return {
           statusCode: 200,
@@ -381,7 +407,7 @@ export class PaypalService {
         statusCode: 500,
         html: this.renderHtmlPage(
           'No se pudo confirmar el pago',
-          'PayPal regreso correctamente, pero el backend no logro cerrar la compra.',
+          'PayPal regresó correctamente, pero el backend no logró cerrar la compra.',
           details,
         ),
       };

@@ -132,6 +132,13 @@ export class PaymentsService {
     });
   }
 
+  async markDeliveryEmailSent(orderId: string) {
+    return this.prisma.order.update({
+      where: { id: orderId },
+      data: { emailSentAt: new Date() },
+    });
+  }
+
   async findAll() {
     return this.prisma.payment.findMany({
       include: {

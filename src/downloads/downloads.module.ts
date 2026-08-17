@@ -8,5 +8,6 @@ import { DownloadsService } from './downloads.service';
   imports: [AccessModule, ProductsModule],
   controllers: [DownloadsController],
   providers: [DownloadsService],
+  exports: [DownloadsService],
 })
 export class DownloadsModule {}

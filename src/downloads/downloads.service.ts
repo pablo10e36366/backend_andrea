@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
+import { promises as fs } from 'fs';
 import * as path from 'path';
 import { AccessService } from '../access/access.service';
 import { ProductsService } from '../products/products.service';
@@ -104,6 +105,24 @@ export class DownloadsService {
       viewUrl: `${this.backendUrl}/downloads/file?token=${encodeURIComponent(token)}`,
       downloadUrl: `${this.backendUrl}/downloads/file?token=${encodeURIComponent(token)}&download=1`,
       expiresInMinutes: 10,
+    };
+  }
+
+  async getEmailAttachment(slug: string) {
+    await this.productsService.findOneBySlug(slug);
+
+    const filePath = this.getFilePathBySlug(slug);
+
+    if (!filePath) {
+      throw new NotFoundException('Protected file not configured');
+    }
+
+    return {
+      content: await fs.readFile(filePath),
+      filename:
+        slug === 'guia-para-el-estres'
+          ? 'guia-para-la-ansiedad.pdf'
+          : `${slug}.pdf`,
     };
   }
 
