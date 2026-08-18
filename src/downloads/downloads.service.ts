@@ -36,6 +36,31 @@ export class DownloadsService {
         'pdfs',
         'ansiedad-como-controlar-tu-mente-en-minutos.pdf',
       ),
+      'como-dejar-de-procrastinar-en-7-dias': path.join(
+        this.privateRoot,
+        'pdfs',
+        'como-dejar-de-procrastinar-en-7-dias.pdf',
+      ),
+      'sanar-una-ruptura-amorosa': path.join(
+        this.privateRoot,
+        'pdfs',
+        'sanar-una-ruptura-amorosa.pdf',
+      ),
+      'desarrollo-de-habilidades-sociales': path.join(
+        this.privateRoot,
+        'pdfs',
+        'desarrollo-de-habilidades-sociales.pdf',
+      ),
+      'el-poder-del-no-establecimiento-de-limites': path.join(
+        this.privateRoot,
+        'pdfs',
+        'el-poder-del-no-establecimiento-de-limites.pdf',
+      ),
+      'superacion-personal-y-crecimiento-humano-consciente': path.join(
+        this.privateRoot,
+        'pdfs',
+        'superacion-personal-y-crecimiento-humano-consciente.pdf',
+      ),
     };
 
     return fileMap[slug];
@@ -168,12 +193,22 @@ export class DownloadsService {
       throw new NotFoundException('Protected file not configured');
     }
 
+    const filenameMap: Record<string, string> = {
+      'guia-para-el-estres': 'guia-para-la-ansiedad.pdf',
+      'como-dejar-de-procrastinar-en-7-dias':
+        'como-dejar-de-procrastinar-en-7-dias.pdf',
+      'sanar-una-ruptura-amorosa': 'sanar-una-ruptura-amorosa.pdf',
+      'desarrollo-de-habilidades-sociales':
+        'desarrollo-de-habilidades-sociales.pdf',
+      'el-poder-del-no-establecimiento-de-limites':
+        'el-poder-del-no-establecimiento-de-limites.pdf',
+      'superacion-personal-y-crecimiento-humano-consciente':
+        'superacion-personal-y-crecimiento-humano-consciente.pdf',
+    };
+
     return {
       content: await fs.readFile(filePath),
-      filename:
-        slug === 'guia-para-el-estres'
-          ? 'guia-para-la-ansiedad.pdf'
-          : `${slug}.pdf`,
+      filename: filenameMap[slug] ?? `${slug}.pdf`,
     };
   }
 
